@@ -43,56 +43,19 @@ def download_image(url, save_path, driver=None):
             
         # 如果是网络URL
         else:
-            # 对于CSDN的图片，使用selenium的cookies
-            if 'csdn.net' in url and driver:
-                cookies = driver.get_cookies()
-                session = requests.Session()
-                for cookie in cookies:
-                    session.cookies.set(cookie['name'], cookie['value'])
-                
-                headers = {
-                    'User-Agent': driver.execute_script('return navigator.userAgent'),
-                    'Referer': 'https://blog.csdn.net/'
-                }
-                response = session.get(url, headers=headers, timeout=30)
-            # 对于知乎的图片，使用特定的请求头
-            elif 'zhihu.com' in url or 'zhimg.com' in url:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Referer': 'https://www.zhihu.com/',
-                    'accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                    'accept-encoding': 'gzip, deflate, br',
-                    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                    'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                    'sec-ch-ua-mobile': '?0',
-                    'sec-ch-ua-platform': '"Windows"',
-                    'sec-fetch-dest': 'image',
-                    'sec-fetch-mode': 'no-cors',
-                    'sec-fetch-site': 'cross-site'
-                }
-                # 如果有driver，添加cookies
-                if driver:
-                    cookies = driver.get_cookies()
-                    session = requests.Session()
-                    for cookie in cookies:
-                        session.cookies.set(cookie['name'], cookie['value'])
-                    response = session.get(url, headers=headers, timeout=30)
-                else:
-                    response = requests.get(url, headers=headers, timeout=30)
-            else:
-                # 添加用户代理和引用来源
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Referer': 'https://blog.csdn.net/'
-                }
-                response = requests.get(url, headers=headers, timeout=30)
-                
+            # 添加用户代理和引用来源
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://mp.weixin.qq.com/'
+            }
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 with open(save_path, "wb") as f:
                     f.write(response.content)
                 return True
-    except Exception as e:
-        print(f"下载图片失败 {url}: {str(e)}")
+    except Exception:
+        # 静默处理错误，不打印错误信息
+        pass
     return False
 
 def clean_filename(filename, index=None):
@@ -173,17 +136,28 @@ def process_images(html_content, html_file_path, resources_dir, driver=None):
             filename = base_filename
             
         else:
-            # 处理图片链接
-            if not url.startswith(('http://', 'https://')):
-                if url.startswith('//'):
-                    url = 'https:' + url
+            # 处理微信图片链接
+            if 'mmbiz.qpic.cn' in url:
+                # 使用图片ID（如果有）和位置信息生成文件名
+                if img_id:
+                    filename = f"wx_img_{img_id}_{position_counter}.png"
                 else:
-                    url = urljoin('https://blog.csdn.net/', url)
+                    # 从URL中提取文件名部分
+                    url_parts = url.split('/')
+                    if len(url_parts) > 0:
+                        wx_filename = url_parts[-1].split('?')[0]
+                        filename = f"wx_img_{wx_filename}_{position_counter}.png"
+                    else:
+                        filename = f"wx_img_{position_counter}.png"
+            else:
+                # 处理其他URL
+                if not url.startswith(('http://', 'https://')):
+                    url = os.path.join(base_path, url)
                     
-            # 生成文件名，包含位置信息
-            original_filename = clean_filename(url)
-            name, ext = os.path.splitext(original_filename)
-            filename = f"{name}_{position_counter}{ext}"
+                # 生成文件名，包含位置信息
+                original_filename = clean_filename(url)
+                name, ext = os.path.splitext(original_filename)
+                filename = f"{name}_{position_counter}{ext}"
             
         # 保存路径
         save_path = os.path.join(resources_dir, filename)
@@ -194,11 +168,8 @@ def process_images(html_content, html_file_path, resources_dir, driver=None):
             return image_mappings[mapping_key]
             
         # 下载图片
-        if download_image(url, save_path, driver):
+        if download_image(url, save_path):
             image_mappings[mapping_key] = filename
-            print(f"成功下载图片: {url}")
-        else:
-            print(f"下载图片失败: {url}")
         return filename
     
     # 处理<img>标签
@@ -317,14 +288,29 @@ def get_chrome_driver():
         return None
 
 def download_html_from_url(url):
-    """使用Selenium从URL下载HTML内容"""
+    """从URL下载HTML内容"""
     try:
-        print("正在启动浏览器...")
-        driver = get_chrome_driver()
-        if not driver:
-            return None
-            
-        try:
+        # 检查是否是微信公众号文章
+        if 'mp.weixin.qq.com' in url:
+            print("检测到微信公众号文章，使用requests获取内容...")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Cache-Control': 'max-age=0'
+            }
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
+        else:
+            # 使用Selenium获取其他网站的内容
+            print("使用Selenium获取页面内容...")
+            driver = get_chrome_driver()
+            if not driver:
+                return None
+                
             print(f"正在访问页面: {url}")
             driver.get(url)
             
@@ -366,14 +352,14 @@ def download_html_from_url(url):
             print("获取页面内容...")
             html_content = driver.page_source
             
+            # 关闭浏览器
+            driver.quit()
+            print("已关闭浏览器")
+            
             return html_content
             
-        finally:
-            print("关闭浏览器...")
-            driver.quit()
-            
     except Exception as e:
-        print(f"下载页面失败: {str(e)}")
+        print(f"下载HTML内容失败: {str(e)}")
         return None
 
 def process_html_content(html_content):
@@ -547,58 +533,15 @@ def process_html_content(html_content):
 
 def convert_url_to_md(url, output_dir=None):
     """将URL转换为Markdown"""
-    driver = None
     try:
         # 如果未提供输出目录，使用当前目录
         if output_dir is None:
             output_dir = os.getcwd()
             
-        # 启动浏览器
-        print("正在启动浏览器...")
-        driver = get_chrome_driver()
-        if not driver:
+        # 下载HTML内容
+        html_content = download_html_from_url(url)
+        if not html_content:
             return None
-            
-        print(f"正在访问页面: {url}")
-        driver.get(url)
-        
-        # 等待页面加载完成
-        print("等待页面加载...")
-        time.sleep(3)  # 基础等待时间
-        
-        # 对于CSDN文章，等待特定元素并处理
-        if 'csdn.net' in url:
-            try:
-                # 等待文章主体内容加载
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "content_views"))
-                )
-                
-                # 展开阅读全文
-                try:
-                    read_more = driver.find_element(By.CLASS_NAME, "hide-article-box")
-                    if read_more:
-                        driver.execute_script("arguments[0].remove()", read_more)
-                except:
-                    pass
-                    
-                # 尝试移除登录弹窗
-                try:
-                    driver.execute_script("""
-                        var elements = document.getElementsByClassName('passport-login-container');
-                        for (var i = 0; i < elements.length; i++) {
-                            elements[i].remove();
-                        }
-                    """)
-                except:
-                    pass
-                    
-            except Exception as e:
-                print(f"等待CSDN元素时出错: {str(e)}")
-                
-        # 获取页面内容
-        print("获取页面内容...")
-        html_content = driver.page_source
             
         # 处理HTML内容
         html_content, metadata = process_html_content(html_content)
@@ -631,8 +574,8 @@ def convert_url_to_md(url, output_dir=None):
             if len(title) > 50:
                 title = title[:50]
         
-        # 转换为Markdown，传入driver实例和元数据
-        result = convert_html_to_md(temp_html_file, output_dir, driver)
+        # 转换为Markdown
+        result = convert_html_to_md(temp_html_file, output_dir)
         
         # 如果转换成功，根据情况重命名文件
         if result:
@@ -692,14 +635,6 @@ def convert_url_to_md(url, output_dir=None):
     except Exception as e:
         print(f"转换URL失败: {str(e)}")
         return None
-    finally:
-        # 在函数结束时关闭浏览器
-        if driver:
-            try:
-                driver.quit()
-                print("已关闭浏览器")
-            except:
-                pass
 
 def convert_html_to_md(html_file, output_dir, driver=None):
     """将HTML文件转换为Markdown"""

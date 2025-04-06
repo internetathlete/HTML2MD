@@ -7,6 +7,7 @@ import threading
 import queue
 import os
 import sys
+import subprocess
 from html2md import convert_url_to_md, convert_file_to_md, convert_directory_to_md
 
 class RedirectText:
@@ -117,6 +118,12 @@ class HTML2MDGui(ttk.Window):
             text="选择输出目录",
             command=self.choose_output_directory
         ).pack(side=LEFT)
+        ttk.Button(
+            output_dir_frame,
+            text="打开输出目录",
+            command=self.open_output_directory,
+            style="info.TButton"
+        ).pack(side=LEFT, padx=(5, 0))
 
         # 输出区域
         output_frame = ttk.LabelFrame(main_container, text="输出", padding=10)
@@ -222,6 +229,25 @@ class HTML2MDGui(ttk.Window):
             except queue.Empty:
                 break
         self.after(100, self.check_queue)
+
+    def open_output_directory(self):
+        """打开输出目录"""
+        output_dir = self.output_dir_entry.get() or self.default_output_dir
+        if os.path.exists(output_dir):
+            try:
+                # Windows系统
+                if os.name == 'nt':
+                    os.startfile(output_dir)
+                # macOS系统
+                elif sys.platform == 'darwin':
+                    subprocess.Popen(['open', output_dir])
+                # Linux系统
+                else:
+                    subprocess.Popen(['xdg-open', output_dir])
+            except Exception as e:
+                messagebox.showerror("错误", f"无法打开输出目录: {str(e)}")
+        else:
+            messagebox.showwarning("警告", "输出目录不存在")
 
 def main():
     app = HTML2MDGui()
